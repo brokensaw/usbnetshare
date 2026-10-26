@@ -1,0 +1,111 @@
+# Configuración de USBnetShare: una sola aplicación con dos roles.
+# Se puede editar a mano o desde la interfaz gráfica (USBnetShare.exe sin argumentos).
+# Ubicación por defecto: junto al .exe si existe allí; si no,
+# %ProgramData%\USBnetShare\USBnetShare.yaml (Windows) o /etc/usbnetshare/usbnetshare.yaml (Linux).
+# La configuración de usbnet (versiones anteriores) se copia sola la primera vez.
+
+# id: identificador estable de este equipo. Se genera solo la primera vez que
+# arranca y se guarda aquí. No lo copies entre equipos.
+
+# ── Servidor de identidades (usbnetshare-registry, en Docker) ──────────────
+# Cada equipo se registra en él con su ID y le pregunta dónde están los demás.
+# USBnetShare no hace ninguna búsqueda por la red: solo habla con el registro y con
+# el servidor USB concreto.
+registry:
+  url: ""                  # p.ej. http://servidor-docker:3250
+  token: ""                # el que muestra el contenedor al arrancar (docker logs)
+
+# ── Rol servidor: comparte USB locales ─────────────────────────────────────
+server:
+  enabled: false
+
+  # Nombre con el que aparece este equipo (por defecto, el nombre del equipo).
+  name: taller-pi
+
+  listen: ":3240"          # puerto TCP estándar de USB/IP
+
+  # backend: "kernel" (Linux, recomendado) | "libusb" (Windows, o Linux sin módulos)
+  # vacío = automático (kernel en Linux, libusb en Windows)
+  backend: ""
+
+  # Windows: con UsbDk instalado (Ajustes → Drivers de Windows) se comparte cualquier
+  # USB sin cambiar su driver. "auto" (o vacío) = usarlo si está instalado;
+  # "off" = solo dispositivos con WinUSB. Cambiarlo requiere reiniciar USBnetShare.
+  usbdk: auto
+
+  # Dispositivos a compartir. Campos vacíos = comodín.
+  export:
+    - vid: "0908"          # Siemens (incluye PC Adapter USB). Verifica con: USBnetShare -list
+    # - vid: "0908"
+    #   pid: "0004"         # concreta el PID si tienes varios dispositivos Siemens
+    # - busid: "1-1.3"      # o un puerto físico concreto
+
+  # Si un cliente se reconecta tras un corte y la sesión antigua sigue "colgada",
+  # se cierra la vieja y se atiende la nueva. Recomendado: true.
+  takeover: true
+
+  # Restringe qué redes pueden conectarse (vacío = todas). USB/IP no cifra.
+  allow_cidrs: []
+  #  - 192.168.0.0/16
+
+  # Descubrimiento por multicast/broadcast (UDP 3241): DESACTIVADO por defecto.
+  # Solo para redes sin servidor de identidades. No lo actives en equipos
+  # conectados a redes de PLC / PROFINET.
+  discovery:
+    enabled: false
+    port: 3241
+    group: 239.255.32.41
+    key: ""
+
+  # Tolerancia a cortes: un corte menor que idle + interval*count no rompe la sesión.
+  keepalive:
+    idle: 5s
+    interval: 3s
+    count: 5
+    user_timeout: 30s      # solo Linux
+
+# ── Rol cliente: usa USB remotos como si fueran locales ────────────────────
+client:
+  enabled: true
+
+  # Nombre del servidor por defecto para las reglas sin server/server_id.
+  server: ""
+
+  # Dispositivos a importar; cada regla se gestiona y reconecta de forma
+  # independiente. Desde la GUI se guardan con server_id (el ID del servidor
+  # en el registro), que sobrevive a cambios de IP y de nombre.
+  devices: []
+  #  - vid: "0908"
+  #    pid: "0004"
+  #    server: taller-pi
+  #    server_id: 3f2a9c0d1e4b5a67
+
+  # Opcional: servidores por IP o nombre DNS, para equipos sin registro.
+  static_servers: []
+  #  - 192.168.5.56:3240
+
+  # Igual que en el servidor: desactivado por defecto.
+  discovery:
+    enabled: false
+    port: 3241
+    group: 239.255.32.41
+    key: ""
+
+  reconnect:
+    min_backoff: 1s
+    max_backoff: 30s
+    discovery_timeout: 2s
+    poll_interval: 1s      # frecuencia de comprobación del enlace
+    wait_device: 5s        # USB desenchufado en el servidor: cada cuánto mirar (TCP al servidor) si volvió
+
+  keepalive:
+    idle: 5s
+    interval: 3s
+    count: 5
+    user_timeout: 30s
+
+# Control local para la interfaz gráfica (solo 127.0.0.1).
+api: 127.0.0.1:3242
+
+log_file: ""               # vacío: consola (o %ProgramData%\USBnetShare\USBnetShare.log como servicio)
+log_level: info

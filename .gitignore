@@ -1,0 +1,4 @@
+dist/
+internal/drivers/payload/
+# Especificación interna (requirements, design, tasks): no se comparte
+docs/

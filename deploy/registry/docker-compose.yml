@@ -1,0 +1,47 @@
+# usbnetshare-registry (coordinador de USBnetShare) con Docker Compose.
+# Desde la raíz del repositorio:
+#   docker compose -f deploy/registry/docker-compose.yml up -d --build
+#   docker compose -f deploy/registry/docker-compose.yml logs usbnetshare-registry   # muestra el token
+#
+# GUI: http://<este-equipo>:3250
+#
+# Al actualizar desde usbnet (contenedor «usbnet-registry»): en Portainer usa
+# «Pull and redeploy» con «Prune services» activado (o bórralo antes) para que
+# el contenedor antiguo libere el puerto 3250, y mantén el mismo nombre de
+# stack: el volumen de datos (token y equipos) se conserva.
+
+services:
+  usbnetshare-registry:
+    build:
+      context: ../..
+      dockerfile: deploy/registry/Dockerfile
+    image: usbnetshare-registry:latest
+    # La imagen no está publicada en ningún registro: se construye siempre desde
+    # el repositorio. Sin esto, Portainer (y "docker compose pull") intenta
+    # descargarla de Docker Hub y falla con "pull access denied".
+    pull_policy: build
+    container_name: usbnetshare-registry
+    restart: unless-stopped
+    ports:
+      - "3250:3250"
+    environment:
+      # Token de conexión. Si se deja vacío se genera uno al primer arranque,
+      # se muestra en la consola y se guarda en el volumen (se conserva al
+      # actualizar o recrear el contenedor). Si se fija aquí, manda este.
+      # (Se siguen aceptando las variables antiguas USBNET_REGISTRY_*.)
+      USBNETSHARE_REGISTRY_TOKEN: ""
+      # Sin latido durante este tiempo, el equipo aparece como desconectado.
+      USBNETSHARE_REGISTRY_OFFLINE_AFTER: "45s"
+      USBNETSHARE_REGISTRY_LOG_LEVEL: "info"
+      # HTTPS (recomendado fuera de una red de confianza): monta el
+      # certificado y la clave e indica sus rutas.
+      # USBNETSHARE_REGISTRY_TLS_CERT: "/certs/registry.crt"
+      # USBNETSHARE_REGISTRY_TLS_KEY: "/certs/registry.key"
+    volumes:
+      # El volumen conserva el nombre de las versiones usbnet: así se mantienen
+      # el token y la lista de equipos al actualizar.
+      - usbnet-registry-data:/data
+      # - ./certs:/certs:ro
+
+volumes:
+  usbnet-registry-data:

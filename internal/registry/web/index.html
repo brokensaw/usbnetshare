@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>USBnetShare Registry</title>
+<link rel="icon" href="logo.png">
+<style>
+  :root {
+    --bg: #f4f5f7; --panel: #ffffff; --text: #1d2330; --muted: #667085; --line: #e3e6ea;
+    --accent: #0b6bcb; --accent-ink: #ffffff; --ok: #15803d; --ok-bg: #e7f6ec;
+    --warn: #b45309; --warn-bg: #fdf3e2; --err: #b42318; --err-bg: #fdecea; --idle-bg: #eef0f3;
+    --srv: #6d28d9; --srv-bg: #f1ebfd; --cli: #0369a1; --cli-bg: #e3f2fb;
+    --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15181e; --panel: #1d2129; --text: #e6e8ec; --muted: #98a1b0; --line: #2d333d;
+      --accent: #4c9ef0; --accent-ink: #0b1220; --ok: #4ade80; --ok-bg: #173323;
+      --warn: #fbbf24; --warn-bg: #3a2c12; --err: #f87171; --err-bg: #3d1a1a; --idle-bg: #262b34;
+      --srv: #c4b5fd; --srv-bg: #2e2445; --cli: #7dd3fc; --cli-bg: #14303f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text); }
+  header { display: flex; align-items: center; gap: 12px; padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  header h1 { font-size: 17px; margin: 0; font-weight: 600; }
+  header .logo { width: 30px; height: 30px; margin-right: -4px; }
+  .spacer { flex: 1; }
+  .muted { color: var(--muted); } .small { font-size: 12px; } .mono { font-family: var(--mono); font-size: 12.5px; }
+  main { padding: 18px 20px; max-width: 1200px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; margin-bottom: 14px; }
+  .card h2 { font-size: 15px; margin: 0 0 6px; }
+  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; min-width: 760px; }
+  th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-weight: 600; color: var(--muted); font-size: 12px; }
+  tr.peer { cursor: pointer; }
+  tr.peer:hover td { background: var(--bg); }
+  tr.detail td { background: var(--bg); }
+  button.btn { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--text); cursor: pointer; }
+  button.btn:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  button.danger { color: var(--err); }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--idle-bg); color: var(--muted); white-space: nowrap; margin: 0 4px 2px 0; }
+  .badge.ok { background: var(--ok-bg); color: var(--ok); }
+  .badge.warn { background: var(--warn-bg); color: var(--warn); }
+  .badge.err { background: var(--err-bg); color: var(--err); }
+  .badge.srv { background: var(--srv-bg); color: var(--srv); }
+  .badge.cli { background: var(--cli-bg); color: var(--cli); }
+  input[type=password], input[type=text] { font: inherit; padding: 7px 9px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--text); width: min(520px, 100%); }
+  .note { padding: 8px 12px; border-radius: 6px; background: var(--idle-bg); margin-top: 8px; }
+  .note.err { background: var(--err-bg); color: var(--err); }
+  .stats { display: flex; gap: 24px; flex-wrap: wrap; }
+  .stat b { font-size: 22px; display: block; }
+  .sub { margin: 4px 0 10px; }
+  .sub table { min-width: 0; margin-top: 4px; }
+  #login { max-width: 640px; margin: 60px auto; }
+  #toast { position: fixed; right: 16px; bottom: 16px; max-width: 460px; padding: 10px 14px; border-radius: 8px; background: var(--text); color: var(--bg); display: none; }
+  #toast.err { background: var(--err); color: #fff; }
+  .empty { padding: 14px 8px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <img class="logo" src="logo.png" alt="">
+  <h1>USBnetShare Registry</h1>
+  <span class="muted small">Servidor de identidades</span>
+  <span class="spacer"></span>
+  <span id="version" class="muted small"></span>
+  <button class="btn" id="logout" hidden>Salir</button>
+</header>
+
+<div id="login" class="card" hidden>
+  <h2>Acceso</h2>
+  <p class="muted">Introduce el token de conexión. Se muestra en la consola del contenedor al arrancar
+    (<span class="mono">docker logs usbnetshare-registry</span>).</p>
+  <div class="row"><input type="password" id="tokenIn" placeholder="token" autocomplete="off">
+    <button class="btn primary" id="loginBtn">Entrar</button></div>
+  <div id="loginErr" class="note err" hidden></div>
+</div>
+
+<main id="app" hidden>
+  <div class="card">
+    <div class="stats">
+      <div class="stat"><b id="sOnline">–</b><span class="muted small">en línea</span></div>
+      <div class="stat"><b id="sTotal">–</b><span class="muted small">equipos registrados</span></div>
+      <div class="stat"><b id="sServers">–</b><span class="muted small">servidores en línea</span></div>
+      <div class="stat"><b id="sClients">–</b><span class="muted small">clientes en línea</span></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row"><h2 class="spacer">Equipos</h2><span class="muted small" id="updated"></span></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Equipo</th><th>ID</th><th>IP</th><th>Roles</th><th>Estado</th><th>Versión</th><th></th></tr></thead>
+      <tbody id="peers"></tbody>
+    </table></div>
+    <div class="muted small" style="margin-top:6px">Pulsa un equipo para ver los USB que comparte y sus conexiones.</div>
+  </div>
+
+  <div class="card">
+    <h2>Token de conexión</h2>
+    <div class="muted" id="tokenText"></div>
+    <div class="row" style="margin-top:8px"><button class="btn danger" id="regen">Regenerar token</button></div>
+    <div id="newToken" class="note" hidden></div>
+  </div>
+</main>
+<div id="toast"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const store = {
+  // "usbnet-registry-token": clave de las versiones usbnet, para no pedir el token otra vez.
+  get() { try { return localStorage.getItem("usbnetshare-registry-token") || localStorage.getItem("usbnet-registry-token") || ""; } catch (e) { return ""; } },
+  set(v) { try { localStorage.removeItem("usbnet-registry-token"); v ? localStorage.setItem("usbnetshare-registry-token", v) : localStorage.removeItem("usbnetshare-registry-token"); } catch (e) {} }
+};
+let token = store.get(), peers = [], info = null;
+const open = new Set();
+
+function toast(msg, isErr) {
+  const t = $("toast");
+  t.textContent = msg; t.className = isErr ? "err" : ""; t.style.display = "block";
+  clearTimeout(t._h); t._h = setTimeout(() => t.style.display = "none", isErr ? 7000 : 3000);
+}
+function ago(t) {
+  const s = Math.max(0, Math.round((Date.now() - new Date(t)) / 1000));
+  if (s < 60) return s + " s"; if (s < 3600) return Math.round(s / 60) + " min";
+  if (s < 86400) return Math.round(s / 3600) + " h"; return Math.round(s / 86400) + " d";
+}
+async function api(method, path) {
+  const r = await fetch(path, { method, headers: { "Authorization": "Bearer " + token } });
+  if (r.status === 401) { showLogin("El token no es válido (¿se ha regenerado?)."); throw new Error("401"); }
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.error || r.statusText);
+  return body;
+}
+
+function showLogin(msg) {
+  $("app").hidden = true; $("logout").hidden = true; $("login").hidden = false;
+  $("loginErr").hidden = !msg; $("loginErr").textContent = msg || "";
+}
+async function login(t) {
+  token = t.trim();
+  try { await api("GET", "/api/v1/info"); }
+  catch (e) { if (e.message !== "401") showLogin(String(e.message)); return; }
+  store.set(token);
+  $("login").hidden = true; $("app").hidden = false; $("logout").hidden = false;
+  refresh();
+}
+$("loginBtn").onclick = () => login($("tokenIn").value);
+$("tokenIn").onkeydown = (e) => { if (e.key === "Enter") login($("tokenIn").value); };
+$("logout").onclick = () => { store.set(""); token = ""; showLogin(); };
+
+function roleBadges(p) {
+  let b = "";
+  if (p.roles && p.roles.server) b += '<span class="badge srv">Servidor</span>';
+  if (p.roles && p.roles.client) b += '<span class="badge cli">Cliente</span>';
+  return b || '<span class="badge">ninguno</span>';
+}
+function devLabel(d) {
+  return `<b>${esc(d.product || "Dispositivo USB")}</b>${d.manufacturer ? ` <span class="muted small">${esc(d.manufacturer)}</span>` : ""}`;
+}
+function detail(p) {
+  const devs = p.devices || [], conns = p.conns || [];
+  const dt = devs.length ? `<table><thead><tr><th>USB compartido</th><th>VID:PID</th><th>Bus</th><th>Uso</th></tr></thead><tbody>${
+    devs.map(d => `<tr><td>${devLabel(d)}</td><td class="mono">${esc(d.vid)}:${esc(d.pid)}</td><td class="mono">${esc(d.busid)}</td>
+      <td>${d.in_use_by ? `<span class="badge ok">usado por ${esc(d.in_use_by)}</span>` : '<span class="badge">libre</span>'}</td></tr>`).join("")
+  }</tbody></table>` : '<div class="muted small">No comparte ningún USB.</div>';
+  const nameOf = (id) => { const s = peers.find(x => x.id === id); return s ? s.name : id; };
+  const ct = conns.length ? `<table><thead><tr><th>Usa el USB</th><th>Del servidor</th><th>Estado</th></tr></thead><tbody>${
+    conns.map(c => `<tr><td>${esc(c.product || c.device)} <span class="muted small mono">${esc(c.device)}</span></td>
+      <td>${esc(c.server_name || nameOf(c.server_id) || "(cualquiera)")}</td>
+      <td><span class="badge ${c.state === "conectado" ? "ok" : c.state === "reintentando" ? "err" : "warn"}">${esc(c.state)}</span>
+        <span class="muted small">hace ${ago(c.since)}</span></td></tr>`).join("")
+  }</tbody></table>` : '<div class="muted small">No usa USB remotos.</div>';
+  return `<div class="sub"><div class="muted small">Primera vez visto: ${new Date(p.first_seen).toLocaleString()} ·
+    IP propias: <span class="mono">${esc((p.addrs || []).join(", ") || "—")}</span> · Sistema: ${esc(p.os || "—")}
+    ${p.roles && p.roles.server ? ` · USB/IP en el puerto ${p.port}` : ""}</div></div>
+    <div class="sub"><b class="small">Comparte</b>${dt}</div><div class="sub"><b class="small">Conexiones como cliente</b>${ct}</div>`;
+}
+
+function render() {
+  const on = peers.filter(p => p.online);
+  $("sOnline").textContent = on.length; $("sTotal").textContent = peers.length;
+  $("sServers").textContent = on.filter(p => p.roles && p.roles.server).length;
+  $("sClients").textContent = on.filter(p => p.roles && p.roles.client).length;
+  $("updated").textContent = "actualizado " + new Date().toLocaleTimeString();
+  $("peers").innerHTML = peers.length ? peers.map((p, i) => {
+    const row = `<tr class="peer" data-id="${esc(p.id)}">
+      <td><b>${esc(p.name || "(sin nombre)")}</b></td>
+      <td class="mono">${esc(p.id)}</td>
+      <td class="mono">${esc(p.observed_ip || "—")}</td>
+      <td>${roleBadges(p)}</td>
+      <td>${p.online ? '<span class="badge ok">en línea</span>' : `<span class="badge">desconectado</span><div class="muted small">hace ${ago(p.last_seen)}</div>`}</td>
+      <td class="small">${esc(p.version || "")}</td>
+      <td><button class="btn danger" data-del="${i}" title="Olvidar este equipo">Eliminar</button></td></tr>`;
+    return row + (open.has(p.id) ? `<tr class="detail"><td colspan="7">${detail(p)}</td></tr>` : "");
+  }).join("") : `<tr><td colspan="7" class="empty">Todavía no se ha registrado ningún equipo. Configura en cada USBnetShare
+    la URL de este registro y el token (Ajustes → Servidor de identidades).</td></tr>`;
+  $("peers").querySelectorAll("tr.peer").forEach(tr => tr.onclick = (e) => {
+    if (e.target.closest("button")) return;
+    const id = tr.dataset.id; open.has(id) ? open.delete(id) : open.add(id); render();
+  });
+  $("peers").querySelectorAll("[data-del]").forEach(b => b.onclick = async () => {
+    const p = peers[+b.dataset.del];
+    if (!confirm(`¿Olvidar «${p.name}»? Si sigue en marcha volverá a aparecer con su siguiente latido.`)) return;
+    try { await api("DELETE", "/api/v1/peers/" + encodeURIComponent(p.id)); toast("Equipo eliminado"); refresh(); }
+    catch (e) { toast(String(e.message), true); }
+  });
+}
+
+function renderInfo() {
+  $("version").textContent = "versión " + info.version;
+  $("tokenText").innerHTML = info.token_from_env
+    ? "El token está fijado con la variable de entorno <span class=\"mono\">USBNETSHARE_REGISTRY_TOKEN</span> del contenedor. Para cambiarlo, cambia la variable y recrea el contenedor."
+    : "El token se guarda en el volumen de datos y se conserva al actualizar o recrear el contenedor. Si lo regeneras, todos los equipos USBnetShare dejarán de conectar hasta que les pongas el nuevo.";
+  $("regen").disabled = info.token_from_env;
+}
+$("regen").onclick = async () => {
+  if (!confirm("¿Regenerar el token? Todos los equipos USBnetShare dejarán de conectar hasta que actualices el token en cada uno.")) return;
+  try {
+    const r = await api("POST", "/api/v1/token/regenerate");
+    token = r.token; store.set(token);
+    $("newToken").hidden = false;
+    $("newToken").innerHTML = `Nuevo token (cópialo en cada USBnetShare): <span class="mono">${esc(r.token)}</span>`;
+    toast("Token regenerado");
+  } catch (e) { toast(String(e.message), true); }
+};
+
+async function refresh() {
+  if (!token || $("app").hidden) return;
+  try {
+    [info, peers] = await Promise.all([api("GET", "/api/v1/info"), api("GET", "/api/v1/peers")]);
+    renderInfo(); render();
+  } catch (e) { if (e.message !== "401") $("updated").textContent = "sin conexión con el registro: " + e.message; }
+}
+setInterval(refresh, 5000);
+token ? login(token) : showLogin();
+</script>
+</body>
+</html>

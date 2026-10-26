@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>USBnetShare</title>
+<link rel="icon" href="logo.png">
+<style>
+  :root {
+    --bg: #f4f5f7; --panel: #ffffff; --text: #1d2330; --muted: #667085; --line: #e3e6ea;
+    --accent: #0b6bcb; --accent-ink: #ffffff; --ok: #15803d; --ok-bg: #e7f6ec;
+    --warn: #b45309; --warn-bg: #fdf3e2; --err: #b42318; --err-bg: #fdecea; --idle-bg: #eef0f3;
+    --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15181e; --panel: #1d2129; --text: #e6e8ec; --muted: #98a1b0; --line: #2d333d;
+      --accent: #4c9ef0; --accent-ink: #0b1220; --ok: #4ade80; --ok-bg: #173323;
+      --warn: #fbbf24; --warn-bg: #3a2c12; --err: #f87171; --err-bg: #3d1a1a; --idle-bg: #262b34;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text); }
+  header { display: flex; align-items: center; gap: 12px; padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 17px; margin: 0; font-weight: 600; }
+  header .logo { width: 30px; height: 30px; margin-right: -4px; }
+  header .spacer { flex: 1; }
+  .muted { color: var(--muted); }
+  .small { font-size: 12px; }
+  nav { display: flex; gap: 4px; padding: 0 20px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  nav button { background: none; border: 0; border-bottom: 2px solid transparent; padding: 10px 12px; color: var(--muted); font: inherit; cursor: pointer; }
+  nav button.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+  main { padding: 18px 20px; max-width: 1100px; }
+  section.tab { display: none; }
+  section.tab.active { display: block; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; margin-bottom: 14px; }
+  .card h2 { font-size: 15px; margin: 0 0 4px; }
+  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .row .grow { flex: 1; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  th { font-weight: 600; color: var(--muted); font-size: 12px; }
+  td.mono, .mono { font-family: var(--mono); font-size: 12.5px; }
+  button.btn { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--text); cursor: pointer; }
+  button.btn:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  button.danger { color: var(--err); }
+  button:disabled { opacity: .55; cursor: default; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--idle-bg); color: var(--muted); white-space: nowrap; }
+  .badge.ok { background: var(--ok-bg); color: var(--ok); }
+  .badge.warn { background: var(--warn-bg); color: var(--warn); }
+  .badge.err { background: var(--err-bg); color: var(--err); }
+  .note { padding: 8px 12px; border-radius: 6px; background: var(--idle-bg); margin-top: 8px; }
+  .note.err { background: var(--err-bg); color: var(--err); }
+  .note.warn { background: var(--warn-bg); color: var(--warn); }
+  label.switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 600; }
+  input[type=text], input[type=password], select, textarea { font: inherit; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+  textarea { width: 100%; min-height: 60px; font-family: var(--mono); font-size: 12.5px; }
+  .field { display: grid; grid-template-columns: 200px 1fr; gap: 8px 14px; align-items: center; margin-top: 10px; }
+  .field .hint { grid-column: 2; margin-top: -4px; }
+  #log { font-family: var(--mono); font-size: 12px; white-space: pre-wrap; word-break: break-all; max-height: 60vh; overflow: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
+  #log .lvl-WARN { color: var(--warn); } #log .lvl-ERROR { color: var(--err); }
+  #toast { position: fixed; right: 16px; bottom: 16px; max-width: 460px; padding: 10px 14px; border-radius: 8px; background: var(--text); color: var(--bg); display: none; box-shadow: 0 4px 16px rgba(0,0,0,.2); }
+  #toast.err { background: var(--err); color: #fff; }
+  .empty { padding: 14px 8px; color: var(--muted); }
+  @media (max-width: 700px) { .field { grid-template-columns: 1fr; } .field .hint { grid-column: 1; } }
+</style>
+</head>
+<body>
+<header>
+  <img class="logo" src="logo.png" alt="">
+  <h1>USBnetShare</h1>
+  <span id="modeBadge" class="badge">…</span>
+  <span id="regBadge" class="badge" title="Servidor de identidades">…</span>
+  <span class="spacer"></span>
+  <span id="version" class="muted small"></span>
+</header>
+<nav>
+  <button data-tab="client" class="active">Usar dispositivos remotos</button>
+  <button data-tab="server">Compartir mis dispositivos</button>
+  <button data-tab="settings">Ajustes</button>
+  <button data-tab="log">Registro</button>
+</nav>
+<main>
+  <!-- CLIENTE -->
+  <section class="tab active" id="tab-client">
+    <div class="card">
+      <div class="row">
+        <label class="switch"><input type="checkbox" id="clientEnabled"> Usar dispositivos remotos en este equipo</label>
+        <span class="grow"></span>
+        <span id="clientBadge" class="badge">…</span>
+      </div>
+      <div id="clientError" class="note err" hidden></div>
+    </div>
+
+    <div class="card">
+      <h2>Mis conexiones</h2>
+      <div class="muted small">Cada conexión se mantiene sola: si se corta la red o cambia la IP del servidor, se vuelve a conectar.</div>
+      <table>
+        <thead><tr><th>Dispositivo</th><th>Servidor</th><th>Estado</th><th>Detalle</th><th></th></tr></thead>
+        <tbody id="rules"></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <h2 class="grow">Servidores en la red</h2>
+        <button class="btn primary" id="discoverBtn">Buscar servidores</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <input type="text" id="addServer" placeholder="IP o nombre, p.ej. 192.168.5.56" style="width:280px">
+        <button class="btn" id="addServerBtn">Añadir servidor</button>
+        <span class="muted small">Si la búsqueda automática no lo encuentra (otra subred, Wi-Fi corporativa, firewall).</span>
+      </div>
+      <div id="discoverResult" class="empty">Pulsa «Buscar servidores» para ver qué equipos comparten dispositivos.</div>
+    </div>
+  </section>
+
+  <!-- SERVIDOR -->
+  <section class="tab" id="tab-server">
+    <div class="card">
+      <div class="row">
+        <label class="switch"><input type="checkbox" id="serverEnabled"> Compartir dispositivos de este equipo</label>
+        <span class="grow"></span>
+        <span id="serverBadge" class="badge">…</span>
+      </div>
+      <div class="field">
+        <span>Nombre en la red</span>
+        <div class="row"><input type="text" id="serverName" style="width:260px"><button class="btn" id="serverNameSave">Guardar</button></div>
+        <span class="hint muted small">Los clientes encuentran este equipo por este nombre, aunque cambie su IP.</span>
+      </div>
+      <div id="serverError" class="note err" hidden></div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <h2 class="grow">Dispositivos USB de este equipo</h2>
+        <button class="btn" id="refreshLocal">Actualizar</button>
+      </div>
+      <table>
+        <thead><tr><th>Compartir</th><th>Dispositivo / fabricante</th><th>VID:PID</th><th>Bus</th><th>Driver</th><th>Uso</th></tr></thead>
+        <tbody id="localDevs"></tbody>
+      </table>
+      <div id="localError" class="note warn" hidden></div>
+      <div id="shareNote" class="note small"></div>
+    </div>
+  </section>
+
+  <!-- AJUSTES -->
+  <section class="tab" id="tab-settings">
+    <div class="card">
+      <h2>Ejecución</h2>
+      <div id="modeText" class="muted"></div>
+      <div id="legacyNote" class="note warn small" hidden>Sigue instalado el servicio de la versión anterior
+        (<span class="mono">usbnet</span>). Pulsa <b>Actualizar servicio</b> para sustituirlo por el de USBnetShare;
+        la configuración ya se ha copiado.</div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn primary" id="installSvc">Instalar como servicio</button>
+        <button class="btn danger" id="uninstallSvc">Quitar servicio</button>
+        <button class="btn" id="allowFw">Permitir en el firewall</button>
+      </div>
+      <div class="muted small" style="margin-top:6px">En el equipo que comparte USB, el firewall debe permitir la entrada a USBnetShare (TCP 3240).
+        Instalar el servicio ya lo hace.</div>
+    </div>
+    <div class="card" id="driversCard">
+      <h2>Drivers de Windows</h2>
+      <div class="field">
+        <span>usbip-win2 <span class="muted small">(usar remotos)</span></span>
+        <label><input type="checkbox" id="drvUsbip"> <span id="driverInfo" class="mono small"></span></label>
+        <span>UsbDk <span class="muted small">(compartir)</span></span>
+        <label><input type="checkbox" id="drvUsbdk"> <span id="usbdkInfo" class="small"></span></label>
+      </div>
+      <div class="row" style="margin-top:10px" id="drvActions">
+        <button class="btn primary" id="installDrv">Instalar drivers seleccionados</button>
+        <span class="muted small">Pide permisos de administrador. Instalar usbip-win2 reinicia los hubs USB 3.0:
+          los USB se desconectan un momento.</span>
+      </div>
+      <div id="drvNotBundled" class="note small" hidden>Este USBnetShare.exe no incluye los instaladores. Descárgalos:
+        <a href="https://github.com/vadimgrn/usbip-win2/releases/tag/v.0.9.8.1" target="_blank">usbip-win2 0.9.8.1</a> ·
+        <a href="https://github.com/daynix/UsbDk/releases/tag/v1.00-22" target="_blank">UsbDk 1.0.22</a>.</div>
+      <div class="muted small" style="margin-top:6px">Con <b>UsbDk</b> se puede compartir cualquier USB (PC Adapter, conversores USB-RS485…)
+        sin cambiar su driver: mientras se comparte, Windows deja de verlo y lo recupera al dejar de compartir.
+        Sin UsbDk solo se comparten los dispositivos con el driver WinUSB (<a href="https://zadig.akeo.ie/" target="_blank">Zadig</a>).</div>
+    </div>
+    <div class="card">
+      <h2>Servidor de identidades</h2>
+      <div class="muted small">USBnetShare se registra en el servidor de identidades (usbnetshare-registry, en Docker) y le pregunta dónde está
+        cada equipo, por su ID. No se hace ninguna búsqueda por la red.</div>
+      <div class="field">
+        <span>URL</span>
+        <input type="text" id="regUrl" placeholder="http://servidor:3250" autocomplete="off">
+        <span>Token</span>
+        <input type="password" id="regToken" placeholder="token que muestra el contenedor al arrancar" autocomplete="off">
+        <span class="hint muted small">Se ve con <span class="mono">docker logs usbnetshare-registry</span>.</span>
+        <span>ID de este equipo</span>
+        <span id="selfId" class="mono"></span>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn" id="testReg">Probar conexión</button>
+        <button class="btn primary" id="saveReg">Guardar</button>
+        <span id="regState" class="small"></span>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Red</h2>
+      <div class="field">
+        <span>Servidor por defecto</span>
+        <input type="text" id="clientServer" placeholder="(cualquiera)">
+        <span class="hint muted small">Nombre del servidor que usan las conexiones que no indican uno.</span>
+        <span>Clave compartida</span>
+        <input type="password" id="discKey" placeholder="(sin clave)" autocomplete="off">
+        <span class="hint muted small">Opcional. Debe ser la misma en servidor y clientes; evita que respondan servidores ajenos.</span>
+        <span>Servidores fijos</span>
+        <textarea id="staticServers" placeholder="taller-pi.local:3240"></textarea>
+        <span class="hint muted small">Uno por línea (IP o nombre). Solo para servidores que no usan el servidor de identidades.</span>
+        <span>Redes permitidas (servidor)</span>
+        <textarea id="allowCidrs" placeholder="192.168.0.0/16"></textarea>
+        <span class="hint muted small">Una por línea. Vacío = cualquiera. USB/IP no cifra: úsalo solo en redes de confianza.</span>
+        <span>Nivel de registro</span>
+        <select id="logLevel"><option>debug</option><option>info</option><option>warn</option><option>error</option></select>
+      </div>
+      <div class="row" style="margin-top:12px"><button class="btn primary" id="saveSettings">Guardar ajustes</button></div>
+    </div>
+    <div class="card small muted">Configuración: <span id="cfgPath" class="mono"></span></div>
+  </section>
+
+  <!-- REGISTRO -->
+  <section class="tab" id="tab-log">
+    <div class="card">
+      <div class="row"><h2 class="grow">Registro</h2><label class="small"><input type="checkbox" id="follow" checked> Seguir</label></div>
+      <div id="log"></div>
+    </div>
+  </section>
+</main>
+<div id="toast"></div>
+
+<script>
+const go = () => window.go.main.App;
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let legacySvc = false; // servicio de usbnet (versión anterior) aún instalado
+async function checkLegacy() { try { legacySvc = await go().LegacyService(); } catch (e) { legacySvc = false; } }
+let cfg = null, status = null, lastLog = 0, lastDiscover = [], drvBundled = false, drvTouched = false;
+const knownNames = {}; // "vid:pid" -> {product, manufacturer} vistos en búsquedas
+
+function toast(msg, isErr) {
+  const t = $("toast");
+  t.textContent = msg; t.className = isErr ? "err" : ""; t.style.display = "block";
+  clearTimeout(t._h); t._h = setTimeout(() => t.style.display = "none", isErr ? 7000 : 3000);
+}
+async function call(fn, ...args) {
+  try { return await go()[fn](...args); }
+  catch (e) { toast(String(e), true); throw e; }
+}
+function ago(t) {
+  const s = Math.max(0, Math.round((Date.now() - new Date(t)) / 1000));
+  if (s < 60) return s + " s"; if (s < 3600) return Math.round(s / 60) + " min"; return Math.round(s / 3600) + " h";
+}
+
+// ── pestañas ──
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
+  document.querySelectorAll("nav button").forEach(x => x.classList.toggle("active", x === b));
+  document.querySelectorAll("section.tab").forEach(s => s.classList.toggle("active", s.id === "tab-" + b.dataset.tab));
+  if (b.dataset.tab === "server") loadLocal();
+});
+
+// ── configuración ──
+async function loadConfig() {
+  cfg = await call("GetConfig");
+  $("clientEnabled").checked = cfg.client.enabled;
+  $("serverEnabled").checked = cfg.server.enabled;
+  $("serverName").value = cfg.server.name || "";
+  $("clientServer").value = cfg.client.server || "";
+  $("discKey").value = cfg.client.discovery.key || cfg.server.discovery.key || "";
+  $("staticServers").value = (cfg.client.static_servers || []).join("\n");
+  $("regUrl").value = cfg.registry.url || "";
+  $("regToken").value = cfg.registry.token || "";
+  $("selfId").textContent = cfg.id || "";
+  $("allowCidrs").value = (cfg.server.allow_cidrs || []).join("\n");
+  $("logLevel").value = cfg.log_level || "info";
+}
+async function save(mutate, okMsg) {
+  const next = JSON.parse(JSON.stringify(cfg));
+  mutate(next);
+  await call("SaveConfig", next);
+  cfg = next;
+  if (okMsg) toast(okMsg);
+  await refresh();
+}
+const lines = (id) => $(id).value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+
+$("clientEnabled").onchange = (e) => save(c => c.client.enabled = e.target.checked,
+  e.target.checked ? "Cliente activado" : "Cliente desactivado: se desconectan los dispositivos remotos").catch(loadConfig);
+$("serverEnabled").onchange = (e) => save(c => c.server.enabled = e.target.checked,
+  e.target.checked ? "Compartiendo dispositivos" : "Ya no se comparte nada").then(loadLocal).catch(loadConfig);
+$("serverNameSave").onclick = () => save(c => c.server.name = $("serverName").value.trim(), "Nombre guardado");
+$("saveSettings").onclick = () => save(c => {
+  c.client.server = $("clientServer").value.trim();
+  c.client.discovery.key = c.server.discovery.key = $("discKey").value;
+  c.client.static_servers = lines("staticServers");
+  c.server.allow_cidrs = lines("allowCidrs");
+  c.log_level = $("logLevel").value;
+}, "Ajustes guardados");
+
+// ── estado ──
+function badge(el, enabled, running, error) {
+  el.className = "badge " + (!enabled ? "" : error ? "err" : running ? "ok" : "warn");
+  el.textContent = !enabled ? "Desactivado" : error ? "Con errores" : running ? "En marcha" : "Arrancando…";
+}
+const stateBadge = { "conectado": "ok", "conectando": "warn", "buscando": "warn", "reintentando": "err",
+  "esperando dispositivo": "warn" };
+
+// "Kingston Technology — DataTraveler 3.0" con lo que se conozca.
+function devName(d) {
+  const prod = d.product || "Dispositivo USB";
+  return d.manufacturer
+    ? `<b>${esc(prod)}</b><div class="muted small">${esc(d.manufacturer)}</div>`
+    : `<b>${esc(prod)}</b>`;
+}
+function ruleLabel(r) {
+  const parts = [];
+  if (r.vid || r.pid) parts.push(`${r.vid || "*"}:${r.pid || "*"}`);
+  if (r.busid) parts.push("bus " + r.busid);
+  return parts.join(" · ");
+}
+function renderStatus() {
+  const s = status;
+  $("version").textContent = "versión " + s.version;
+  $("cfgPath").textContent = s.config_path;
+  const svc = s.mode === "servicio";
+  $("modeBadge").className = "badge " + (svc ? "ok" : "warn");
+  $("modeBadge").textContent = svc ? "Servicio" : "Modo local";
+  const rg = s.registry || {};
+  $("regBadge").className = "badge " + (!rg.enabled ? "warn" : rg.connected ? "ok" : "err");
+  $("regBadge").textContent = !rg.enabled ? "Sin servidor de identidades" : rg.connected ? "Identidades: conectado" : "Identidades: sin conexión";
+  $("regState").textContent = !rg.enabled ? "No configurado."
+    : rg.connected ? `Conectado · último latido hace ${ago(rg.last_ok)}` : `Sin conexión: ${rg.error || "…"}`;
+  $("regState").style.color = !rg.enabled ? "" : rg.connected ? "var(--ok)" : "var(--err)";
+  $("modeText").innerHTML = svc
+    ? "USBnetShare funciona como <b>servicio de Windows</b>: sigue activo aunque cierres esta ventana o nadie haya iniciado sesión."
+    : "USBnetShare funciona <b>dentro de esta ventana</b>: al cerrarla se desconectan los dispositivos y se deja de compartir. Instálalo como servicio para que funcione siempre.";
+  $("installSvc").disabled = svc && !legacySvc; $("uninstallSvc").disabled = !svc;
+  $("installSvc").textContent = legacySvc ? "Actualizar servicio" : "Instalar como servicio";
+  $("legacyNote").hidden = !legacySvc;
+  const usbipOk = /compatible$|disponible$/.test(s.client.driver || "");
+  $("driverInfo").textContent = s.client.driver || "…";
+  $("driverInfo").style.color = usbipOk ? "var(--ok)" : "var(--err)";
+  const dkOff = cfg && cfg.server.usbdk === "off";
+  $("usbdkInfo").textContent = !s.server.usbdk_installed ? "no instalado"
+    : s.server.usbdk_active ? "instalado · en uso" : dkOff ? "instalado · desactivado (usbdk: off)"
+    : s.server.usbdk_error ? "instalado · no se usa: " + s.server.usbdk_error : "instalado";
+  $("usbdkInfo").style.color = !s.server.usbdk_installed ? "var(--muted)" : s.server.usbdk_error ? "var(--warn)" : "var(--ok)";
+  if (!drvTouched) { $("drvUsbip").checked = !usbipOk; $("drvUsbdk").checked = !s.server.usbdk_installed; }
+  $("shareNote").innerHTML = s.server.usbdk_active
+    ? "Se usa <b>UsbDk</b>: cualquier dispositivo se puede compartir sin cambiar su driver. Mientras se comparte, este equipo deja de verlo; lo recupera al dejar de compartir."
+    : s.server.usbdk_error ? "<b>UsbDk está instalado pero no se puede usar</b>: " + esc(s.server.usbdk_error) + ". Mientras tanto solo se comparten dispositivos con el driver WinUSB."
+    : "En Windows, sin UsbDk, un dispositivo solo se puede compartir si tiene el driver <b>WinUSB</b>. Instala <b>UsbDk</b> en Ajustes → Drivers de Windows para compartir cualquier USB sin cambiar su driver. Mientras lo comparta, este equipo no podrá usarlo localmente.";
+
+  badge($("clientBadge"), s.client.enabled, s.client.running, s.client.error);
+  $("clientError").hidden = !s.client.error; $("clientError").textContent = s.client.error || "";
+  badge($("serverBadge"), s.server.enabled, s.server.running, s.server.error);
+  $("serverError").hidden = !s.server.error; $("serverError").textContent = s.server.error || "";
+
+  const rules = cfg ? (cfg.client.devices || []) : [];
+  const live = s.client.rules || [];
+  $("rules").innerHTML = rules.length ? rules.map((r, i) => {
+    const st = live[i] && s.client.enabled ? live[i] : null;
+    const state = st ? st.state : (s.client.enabled ? "…" : "inactivo");
+    const detail = !st ? ""
+      : st.state === "conectado" ? `${esc(st.host)} · ${esc(st.local)} · hace ${ago(st.since)}`
+      : st.state === "esperando dispositivo"
+        ? `Desenchufado en el servidor desde hace ${ago(st.since)}. Se reconectará solo al volver a enchufarlo.`
+      : esc(st.last_error || "");
+    const known = knownNames[`${r.vid}:${r.pid}`] || {};
+    const name = devName({ product: (st && st.product) || known.product || ruleLabel(r), manufacturer: known.manufacturer });
+    return `<tr><td>${name}<div class="muted small mono">${esc(ruleLabel(r))}</div></td>
+      <td>${esc(r.server || cfg.client.server || "(cualquiera)")}</td>
+      <td><span class="badge ${stateBadge[state] || ""}">${esc(state)}</span></td>
+      <td class="small muted">${detail}</td>
+      <td><button class="btn danger" data-del="${i}">Desconectar</button></td></tr>`;
+  }).join("") : `<tr><td colspan="5" class="empty">Aún no hay conexiones. Busca servidores y pulsa «Conectar» en un dispositivo.</td></tr>`;
+  $("rules").querySelectorAll("[data-del]").forEach(b => b.onclick = () =>
+    save(c => c.client.devices.splice(+b.dataset.del, 1), "Conexión eliminada"));
+}
+async function refresh() {
+  try { status = await go().GetStatus(); renderStatus(); } catch (e) { /* servicio reiniciándose */ }
+}
+
+// ── servidor de identidades ──
+$("testReg").onclick = async () => {
+  const b = $("testReg"); b.disabled = true;
+  try { await call("TestRegistry", $("regUrl").value.trim(), $("regToken").value.trim()); toast("Conexión correcta con el servidor de identidades"); }
+  catch (e) { /* call ya muestra el error */ }
+  finally { b.disabled = false; }
+};
+$("saveReg").onclick = () => save(c => {
+  c.registry.url = $("regUrl").value.trim();
+  c.registry.token = $("regToken").value.trim();
+}, "Servidor de identidades guardado");
+
+// ── descubrimiento ──
+$("discoverBtn").onclick = async () => {
+  const b = $("discoverBtn"); b.disabled = true; b.textContent = "Buscando…";
+  try { lastDiscover = await call("Discover"); renderDiscover(); }
+  finally { b.disabled = false; b.textContent = "Buscar servidores"; }
+};
+function alreadyRule(srv, d) {
+  return (cfg.client.devices || []).some(r =>
+    (srv.id && r.server_id ? r.server_id === srv.id : (r.server || cfg.client.server) === srv.name) &&
+    r.vid === d.vid && r.pid === d.pid && (!r.busid || r.busid === d.busid));
+}
+function renderDiscover() {
+  for (const s of lastDiscover) for (const d of s.devices) knownNames[`${d.vid}:${d.pid}`] = d;
+  if (!lastDiscover.length) {
+    const rg = (status && status.registry) || {};
+    $("discoverResult").innerHTML = `<div class="note warn">${!rg.enabled
+      ? "No hay servidor de identidades configurado. Configúralo en Ajustes → Servidor de identidades, o añade el servidor por IP arriba."
+      : "No hay ningún servidor en línea en el servidor de identidades. Comprueba que el equipo que comparte USB tiene USBnetShare en marcha, «Compartir» activado y el mismo servidor de identidades configurado."}</div>`;
+    return;
+  }
+  $("discoverResult").innerHTML = lastDiscover.map((s, si) => `
+    <div style="margin-top:10px"><b>${esc(s.name)}</b>
+      <span class="muted small mono">${esc(s.host)}:${s.port}</span>
+      ${s.id ? `<span class="muted small mono" title="Identificador del servidor">· id ${esc(s.id)}</span>` : ""}
+      ${s.static_entry ? '<span class="badge">añadido a mano</span>' : ""}
+      ${s.static_entry ? `<button class="btn danger small" data-rm="${si}" style="margin-left:6px">Quitar</button>` : ""}</div>
+    ${s.error ? `<div class="note err small">No responde: ${esc(s.error)}</div>` : ""}
+    <table><tbody>${s.devices.length ? s.devices.map((d, di) => {
+      const mine = alreadyRule(s, d);
+      return `<tr><td>${devName(d)}</td><td class="mono">${esc(d.vid)}:${esc(d.pid)}</td>
+        <td class="mono">bus ${esc(d.busid)}</td>
+        <td>${s.static ? "" : d.busy ? '<span class="badge warn">en uso</span>' : '<span class="badge ok">libre</span>'}</td>
+        <td>${mine ? '<span class="muted small">ya añadido</span>'
+          : `<button class="btn primary" data-s="${si}" data-d="${di}">Conectar</button>`}</td></tr>`;
+    }).join("") : (s.error ? "" : '<tr><td class="empty">Este servidor no comparte ningún dispositivo.</td></tr>')}</tbody></table>`).join("");
+  $("discoverResult").querySelectorAll("[data-rm]").forEach(b => b.onclick = () => {
+    const entry = lastDiscover[+b.dataset.rm].static_entry;
+    save(c => c.client.static_servers = (c.client.static_servers || []).filter(x => x !== entry), "Servidor quitado")
+      .then(() => { $("staticServers").value = (cfg.client.static_servers || []).join("\n"); $("discoverBtn").click(); });
+  });
+  $("discoverResult").querySelectorAll("[data-s]").forEach(b => b.onclick = () => {
+    const s = lastDiscover[+b.dataset.s], d = s.devices[+b.dataset.d];
+    // Se identifica por VID:PID; el bus solo si el servidor tiene varios iguales.
+    const twins = s.devices.filter(x => x.vid === d.vid && x.pid === d.pid).length > 1;
+    // Con servidor de identidades la regla guarda el ID del servidor (sobrevive a cambios de IP y de nombre).
+    const rule = { vid: d.vid, pid: d.pid, busid: twins ? d.busid : "", server: s.name, server_id: s.id || "" };
+    knownNames[`${d.vid}:${d.pid}`] = d;
+    save(c => { c.client.enabled = true; (c.client.devices = c.client.devices || []).push(rule); },
+      "Conectando " + (d.product || d.vid + ":" + d.pid) + "…").then(() => { $("clientEnabled").checked = true; renderDiscover(); });
+  });
+}
+
+$("addServerBtn").onclick = () => {
+  let v = $("addServer").value.trim();
+  if (!v) return;
+  // Puerto 3240 si no se indica ("host:puerto" o "[ipv6]:puerto").
+  const hasPort = /^\[.*\]:\d+$/.test(v) || /^[^:]+:\d+$/.test(v);
+  if (!hasPort) v = v.includes(":") ? `[${v}]:3240` : v + ":3240";
+  if ((cfg.client.static_servers || []).includes(v)) { $("discoverBtn").click(); return; }
+  save(c => (c.client.static_servers = c.client.static_servers || []).push(v), "Servidor añadido: " + v)
+    .then(() => { $("addServer").value = ""; $("staticServers").value = cfg.client.static_servers.join("\n"); $("discoverBtn").click(); });
+};
+$("addServer").onkeydown = (e) => { if (e.key === "Enter") $("addServerBtn").click(); };
+
+// ── dispositivos locales ──
+async function loadLocal() {
+  $("localError").hidden = true;
+  let devs;
+  try { devs = await go().LocalDevices(); }
+  catch (e) {
+    $("localDevs").innerHTML = "";
+    $("localError").hidden = false; $("localError").textContent = String(e);
+    return;
+  }
+  const usbdk = status && status.server.usbdk_active;
+  $("localDevs").innerHTML = devs.length ? devs.map((d, i) => {
+    const blocked = !d.shareable;
+    const use = d.missing ? '<span class="badge warn">desenchufado</span><div class="muted small">se compartirá al volver a enchufarlo</div>'
+      : d.in_use_by ? `<span class="badge ok">usado por ${esc(d.in_use_by)}</span>`
+      : blocked && d.exported ? '<span class="badge err">no se puede abrir</span>'
+      : d.exported ? '<span class="badge">compartido</span>' : "";
+    return `<tr>
+    <td><input type="checkbox" data-i="${i}" ${d.exported ? "checked" : ""} ${blocked && !d.exported ? "disabled" : ""}
+      title="${blocked ? "Necesita UsbDk (Ajustes → Drivers de Windows) o el driver WinUSB para poder compartirse" : ""}"></td>
+    <td>${devName(d)}</td><td class="mono">${esc(d.vid)}:${esc(d.pid)}</td>
+    <td class="mono">${esc(d.busid || "—")}</td>
+    <td class="small">${d.driver ? (blocked ? `<span style="color:var(--err)">${esc(d.driver)}</span><div class="muted">necesita UsbDk o WinUSB</div>`
+      : usbdk ? `<span class="muted">${esc(d.driver)}</span>`
+      : `<span style="color:var(--ok)">${esc(d.driver)}</span>`) : ""}</td>
+    <td>${use}</td></tr>`;
+  }).join("") : `<tr><td colspan="6" class="empty">No se ve ningún dispositivo USB.</td></tr>`;
+  $("localDevs").querySelectorAll("[data-i]").forEach(cb => cb.onchange = () => {
+    const d = devs[+cb.dataset.i];
+    if (cb.checked && d.hid && !confirm(`${d.product || d.vid + ":" + d.pid} parece un teclado, ratón u otro dispositivo de entrada. ` +
+        "Mientras se comparta, este equipo no podrá usarlo. ¿Compartirlo igualmente?")) { cb.checked = false; return; }
+    const hex = (s) => parseInt(s || "", 16);
+    const matches = (m) => (!m.vid || hex(m.vid) === hex(d.vid)) && (!m.pid || hex(m.pid) === hex(d.pid)) &&
+      (!m.busid || m.busid === d.busid) && (m.vid || m.pid || m.busid);
+    localSaving = true;
+    save(c => {
+      c.server.export = c.server.export || [];
+      if (cb.checked) { c.server.export.push({ vid: d.vid, pid: d.pid }); c.server.enabled = true; }
+      else c.server.export = c.server.export.filter(m => !matches(m));
+    }, cb.checked ? "Compartiendo " + (d.product || d.vid + ":" + d.pid) : "Dejado de compartir")
+      .then(() => { $("serverEnabled").checked = cfg.server.enabled; })
+      .catch(() => {})
+      .finally(() => { localSaving = false; loadLocal(); });
+  });
+}
+$("refreshLocal").onclick = loadLocal;
+// Refresco automático: enchufar o desenchufar en el servidor se ve solo.
+// Se omite mientras se guarda un cambio de casilla, para no pisarlo.
+let localSaving = false;
+setInterval(() => {
+  if ($("tab-server").classList.contains("active") && !localSaving) loadLocal();
+}, 3000);
+
+// ── servicio ──
+$("installSvc").onclick = async () => {
+  const b = $("installSvc"); b.disabled = true; b.textContent = "Instalando…";
+  try { await call("InstallService"); toast("Servicio instalado y en marcha"); }
+  finally { await checkLegacy(); await loadConfig(); await refresh(); }
+};
+$("uninstallSvc").onclick = async () => {
+  if (!confirm("¿Quitar el servicio? USBnetShare pasará a funcionar solo mientras esta ventana esté abierta.")) return;
+  try { await call("UninstallService"); toast("Servicio eliminado"); }
+  finally { await loadConfig(); await refresh(); }
+};
+
+// ── drivers ──
+$("drvUsbip").onchange = $("drvUsbdk").onchange = () => { drvTouched = true; };
+$("installDrv").onclick = async () => {
+  const ids = [["drvUsbip", "usbip"], ["drvUsbdk", "usbdk"]].filter(([id]) => $(id).checked).map(([, v]) => v);
+  if (!ids.length) { toast("Marca al menos un driver", true); return; }
+  const b = $("installDrv"); b.disabled = true; b.textContent = "Instalando…";
+  try { toast(await call("InstallDrivers", ids)); drvTouched = false; } catch (e) {}
+  finally { b.disabled = false; b.textContent = "Instalar drivers seleccionados"; await refresh(); }
+};
+
+$("allowFw").onclick = async () => {
+  try { await call("AllowFirewall"); toast("Regla del firewall añadida"); } catch (e) {}
+};
+
+// ── registro ──
+async function pollLogs() {
+  try {
+    const ls = await go().Logs(lastLog);
+    if (ls.length) {
+      const box = $("log");
+      for (const l of ls) {
+        const div = document.createElement("div");
+        const m = l.text.match(/level=(\w+)/);
+        if (m) div.className = "lvl-" + m[1];
+        div.textContent = l.text;
+        box.appendChild(div);
+        lastLog = l.seq;
+      }
+      while (box.childElementCount > 1000) box.firstChild.remove();
+      if ($("follow").checked) box.scrollTop = box.scrollHeight;
+    }
+  } catch (e) { /* ignorado */ }
+}
+
+(async function init() {
+  // window.go aparece cuando el runtime de Wails termina de cargar.
+  while (!window.go || !window.go.main) await new Promise(r => setTimeout(r, 50));
+  await checkLegacy();
+  await loadConfig();
+  try { drvBundled = await go().DriversBundled(); } catch (e) { drvBundled = false; }
+  $("drvActions").style.display = drvBundled ? "" : "none"; $("drvNotBundled").hidden = drvBundled;
+  $("drvUsbip").disabled = $("drvUsbdk").disabled = !drvBundled;
+  await refresh();
+  setInterval(refresh, 1500);
+  setInterval(pollLogs, 1500);
+  pollLogs();
+})();
+</script>
+</body>
+</html>
